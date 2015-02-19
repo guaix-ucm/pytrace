@@ -2,16 +2,20 @@
 
 from __future__ import division, print_function
 
+
 import numpy as np
 import matplotlib.pyplot as plt
 import math
 
 from astropy.io import fits
 
+
 from peakdetection import peak_detection_mean_window
+
 
 def wcs_to_pix(x):
     return int(math.floor(x + 0.5))
+
 
 def linear_fit(xx, yy):
     xx = np.asarray(xx)
@@ -25,6 +29,7 @@ def linear_fit(xx, yy):
     bet = up / down
     alp = ym - bet * xm
     return bet, alp
+
 
 def prediction(xx, yy, x, n=5):
 
@@ -44,10 +49,6 @@ def prediction(xx, yy, x, n=5):
     return 0.0
 
 def fit_para_equal_spaced(dd):
-    '''Parabole that passes through 3 points
-        
-    With X=[-1,0,1]
-    '''
     
     Y2 = dd[1]
     Y1 = dd[0]
@@ -190,20 +191,20 @@ def init_traces(image, center, hs, background, npred, maxdis=9.0):
     print('Done')
     return fiber_traces
 
-def we_are_in_limits(col):
-    return (col > 6) and (col < 4090)
+def trace_global(trace, image, start, step, hs, background, maxdis):
 
-print('Loop over traces')
+    trace = trace_backward(trace, image, cstart, step, hs, background, maxdis)
+    trace = trace_forward(trace, image, cstart, step, hs, background, maxdis)
+    return trace
 
-maxdis = 2.0
 
-def trace_backward(trace, image, start, hs, background):
-    return trace_common(trace, image, start, hs, direction=TRACE_BACKWARD, background=background)
+def trace_backward(trace, image, start, step, hs, background, maxdis):
+    return trace_common(trace, image, start, step, hs, direction=TRACE_BACKWARD, background=background, maxdis=maxdis)
     
-def trace_forward(trace, image, start, hs, background):
-    return trace_common(trace, image, start, hs, direction=TRACE_FORWARD, background=background)
+def trace_forward(trace, image, start, step, hs, background, maxdis):
+    return trace_common(trace, image, start, step, hs, direction=TRACE_FORWARD, background=background, maxdis=maxdis)
     
-def trace_common(trace, image, start, hs, direction, background):
+def trace_common(trace, image, start, step, hs, direction, background, maxdis):
 
     if direction == TRACE_FORWARD:
         dirmod = 1
@@ -215,9 +216,10 @@ def trace_common(trace, image, start, hs, direction, background):
     trace.set_direction(direction)
 
     col = start
-    while we_are_in_limits(col):
+    # FIXME: change this
+    while (col > 6) and (col < 4090):
         print('we are in column', col)    
-        col = col + dirmod * hs
+        col = col + dirmod * step
         print('we go to column', col)
 
         expected = trace.predict(col)
@@ -285,29 +287,36 @@ if __name__ == '__main__':
     print('trace detection')
 
     cstart = 2000
-    hs = 5
+    hs = 3
+    step1 = 10
     background1 = 150.0
     npred = 5
+    maxdis1 = 2.0
 
     fiber_traces = init_traces(image1, center=cstart, hs=hs, 
                                 background=background1, npred=npred)
 
     i = 1
-    for trace in fiber_traces.values():
+    print('Loop over traces')
+
+    
+    for trace in [fiber_traces[40]]:
 
         col = trace.sample_c[0]
     
-        trace = trace_backward(trace, image1, cstart, hs, background1)
+        trace = trace_global(trace, image1, cstart, step1, hs, background1, maxdis1)
 
-        trace = trace_forward(trace, image1, cstart, hs, background1)
+        print(len(trace.sample_f))
+
+        pfit = np.polyfit(trace.sample_f, trace.trace_f, deg=5)
+        p = np.poly1d(pfit)
 
         plt.plot(trace.sample_f, trace.trace_f, 'r*')
-        plt.savefig('fig%i.png' % i)
+        xpix = np.arange(0, 4200, 500)
+        plt.plot(xpix, p(xpix), 'b')
+        plt.show()
         i += 1
-    
+
     # check if samples are sorted
     #assert all(a <= b for a, b in zip(trace.sample_f, trace.sample_f[1:]))
-    
-
-    
 
