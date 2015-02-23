@@ -193,8 +193,8 @@ def init_traces(image, center, hs, background, npred, maxdis=9.0):
 
 def trace_global(trace, image, start, step, hs, background, maxdis):
 
-    trace = trace_backward(trace, image, cstart, step, hs, background, maxdis)
-    trace = trace_forward(trace, image, cstart, step, hs, background, maxdis)
+    trace = trace_backward(trace, image, start, step, hs, background, maxdis)
+    trace = trace_forward(trace, image, start, step, hs, background, maxdis)
     return trace
 
 
@@ -215,6 +215,9 @@ def trace_common(trace, image, start, step, hs, direction, background, maxdis):
 
     trace.set_direction(direction)
 
+    # Region to find peaks
+    regw = 1 + int(math.ceil(maxdis))
+
     col = start
     # FIXME: change this
     while (col > 6) and (col < 4090):
@@ -228,8 +231,8 @@ def trace_common(trace, image, start, step, hs, direction, background, maxdis):
         epix = wcs_to_pix(expected)
 
         print('extract a region around the expected peak')
-        region = image[epix-5:epix+5,col-hs:col+hs].mean(axis=1)
-        thisx = np.arange(epix-5,epix+5)
+        region = image[epix-regw:epix+regw + 1,col-hs:col+hs].mean(axis=1)
+        thisx = np.arange(epix-regw,epix+regw + 1)
         print('find the peak')
         maxt = peak_detection_mean_window(region, x=thisx, background=background)
         print(maxt)
@@ -256,16 +259,11 @@ def trace_common(trace, image, start, step, hs, direction, background, maxdis):
             print('correct')
 
         print('fit the peak', nearp3)
+        # hardcoded, with three points
+        # a different number of points requires to change the routine
         xthin, ythin = interp_max_3(image[nearp3-1:nearp3+2, col])
         xthin += nearp3
         print('fit the peak', xthin, ythin)
-
-        #plt.xlim([235,245])
-        #plt.plot(thisx, region, 'r*-')
-        #plt.plot(maxt[:,1], 1.1 * maxt[:,2], 'g*')
-        #plt.plot([xthin], [1.1 * ythin], 'bo')
-        #plt.show()
-
 
         trace.sample_f.append(col)
         trace.trace_f.append(xthin)
