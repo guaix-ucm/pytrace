@@ -6,6 +6,20 @@ from setuptools import find_packages
 
 import sys
 
+# try to handle gracefully Cython
+try:
+    from Cython.Distutils import build_ext
+    ext1 = Extension('trace._traces',
+                     ['trace/traces.pyx'],
+                     language='c++')
+    cmdclass = {'build_ext': build_ext}
+except ImportError:
+    print('We do not have Cython, just using the generated files')
+    ext1 = Extension('trace._traces',
+                     ['trace/traces.cpp'],
+                     language='c++')
+    cmdclass = {}
+
 setup(name='pytrace',
       version='0.1.dev',
       author='Sergio Pascual',
@@ -13,5 +27,7 @@ setup(name='pytrace',
       license='GPLv3',
       description='Tracing experiment',
       packages=find_packages('.'),
+      ext_modules=[ext1],
+      cmdclass=cmdclass,
       long_description=open('README.md').read()
       )
