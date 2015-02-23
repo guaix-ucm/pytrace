@@ -10,13 +10,15 @@ import sys
 try:
     from Cython.Distutils import build_ext
     ext1 = Extension('trace._traces',
-                     ['trace/traces.pyx'],
+                     ['trace/traces.pyx', 'trace/fitter.cpp',
+                      'trace/Trace.cpp'],
                      language='c++')
     cmdclass = {'build_ext': build_ext}
 except ImportError:
     print('We do not have Cython, just using the generated files')
     ext1 = Extension('trace._traces',
-                     ['trace/traces.cpp'],
+                     ['trace/traces.cpp', 'trace/fitter.cpp',
+                      'trace/Trace.cpp'],
                      language='c++')
     cmdclass = {}
 

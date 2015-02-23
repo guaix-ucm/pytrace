@@ -5,8 +5,8 @@ import numpy
 cimport numpy
 
 from libc.math cimport floor, ceil
-from libc.stdlib cimport abs as cabs
-from libc.stdio cimport printf
+from libc.math cimport fabs
+#from libc.stdio cimport printf
 from libcpp.vector cimport vector
 
 ctypedef fused FType:
@@ -24,15 +24,10 @@ cdef extern from "Trace.h" namespace "Numina":
         vector[double] ytrace
         void reverse() nogil
 
-cdef double my_abs(double x) nogil:
-    if x < 0:
-        return -x
-    return x
-
 cdef vector[int] local_max(double* mm, size_t n, double background) nogil:
     
     cdef vector[int] result
-    cdef int i
+    cdef size_t i
     
     if mm[0] >= background:
         if mm[0] > mm[1]:
@@ -85,10 +80,11 @@ cdef int wc_to_pix(double x) nogil:
 
 @cython.cdivision(True)
 @cython.boundscheck(False)
-cdef int miin(FType[:, :] arr, vector[double]& out) nogil:
-    cdef int I = arr.shape[0]
-    cdef int J = arr.shape[1]
+cdef int colapse_mean(FType[:, :] arr, vector[double]& out) nogil:
+    cdef size_t I = arr.shape[0]
+    cdef size_t J = arr.shape[1]
     cdef double accum
+    cdef size_t i, j
     for i in range(I):
         accum = 0.0
         for j in range(J):
@@ -99,9 +95,11 @@ cdef int miin(FType[:, :] arr, vector[double]& out) nogil:
 
 @cython.cdivision(True)
 @cython.boundscheck(False)
-cdef Trace internal_tracing(FType[:, :] arr, Trace& trace, double x, double y, size_t step=1, size_t hs=1, 
-                            double maxdis=2.0, double background=150.0,
-                            int direction=-1) nogil:
+cdef Trace _internal_tracing(FType[:, :] arr, Trace& trace, double x, double y,
+                             size_t step=1, size_t hs=1, 
+                             double maxdis=2.0, double background=150.0,
+                             int direction=-1) nogil:
+
     cdef int col = wc_to_pix(x)
     cdef int row = wc_to_pix(y)
     
@@ -109,13 +107,15 @@ cdef Trace internal_tracing(FType[:, :] arr, Trace& trace, double x, double y, s
     cdef double prediction
     
     cdef int axis = 1
-    cdef int i
+    cdef size_t i
 
     cdef size_t axis_size = arr.shape[1]
+    cdef const char* aa = "aaaaaa"
     
     # Buffer
     cdef size_t regw = 1 + <int>ceil(maxdis)
     cdef size_t buffsize = 2 * regw + 1
+    cdef size_t pred_off 
     cdef vector[double] pbuff
     # Peaks
     cdef vector[int] peaks
@@ -125,62 +125,71 @@ cdef Trace internal_tracing(FType[:, :] arr, Trace& trace, double x, double y, s
     cdef vector[double] result
     
     # Init pbuff
-    for i in range(buffsize):
+    for _ in range(buffsize):
         pbuff.push_back(0.0)
     
     #print 'Buffer size', buffsize
     
-    while (col > 100 + hs) and (col + hs < axis_size):
+    while (col - step > hs) and (col + step + hs < axis_size):
         #print 'we are in column', col
         col += direction * step
+#        printf("--------------------col %i\n", col, prediction)
         #print 'we go to column', col
         #print 'we predict the peak will be in coordinate', prediction
         prediction = trace.predict(col)
+
         pred_pix = wc_to_pix(prediction)
-        
+        pred_off = pred_pix-regw 
+        #printf("col %i pred %f pix %i\n", col, prediction, pred_pix)
         # extract a region around the expected peak
         # and collapse it
-        miin(arr[pred_pix-regw:pred_pix+regw + 1,col-hs:col+hs+1], pbuff)
+        colapse_mean(arr[pred_pix-regw:pred_pix+regw + 1,col-hs:col+hs+1], pbuff)
 
         # Find the peaks
         peaks = local_max(&pbuff[0], buffsize, background=background)
         
         # find nearest peak to prediction
-        dis = 4000.0 # a large number
+        dis = 40000.0 # a large number
         ipeak = -1
+        #printf("npeaks %i\n", peaks.size())
         for i in range(peaks.size()):
-            ndis = my_abs(peaks[i] + pred_pix - regw - prediction)
+            ndis = fabs(peaks[i] + pred_off - prediction)
             if ndis < dis:
                 dis = ndis
                 ipeak = i
-            else:
-                break
-        if ipeak < 0:
+        # check the peak is not further than npixels'
+        if ipeak < 0 or dis > maxdis:
+            # printf("peak is not found %i\n", ipeak)
             # peak is not found
             return trace
+        #printf("peak %f\n", peaks[ipeak] + pred_off)
+        #printf("col %i pred %f\n", col, prediction)
 
         nearp = peaks[ipeak] + pred_pix - regw
         
-        # check the peak is not further than npixels'
 
         # fit the peak with three points
         result = interp_max_3(arr[nearp-1:nearp+2, col])
+        
         trace.push_back(col, result[0] + nearp)
 
     return trace
 
 @cython.cdivision(True)
 @cython.boundscheck(False)
-def tracing(FType[:, :] arr, double x, double y, size_t step=1, size_t hs=1, double background=150.0, double maxdis=2.0):
+def tracing(FType[:, :] arr, double x, double y, size_t step=1, 
+                     size_t hs=1, double background=150.0,
+                     double maxdis=2.0):
     
     cdef Trace trace 
-    
+    # Initial values    
     trace.push_back(x, y)
-    internal_tracing(arr, trace, x, y, step=step, hs=hs, 
-                     maxdis=maxdis, background=background,
-                     direction=-1)
+
+    _internal_tracing(arr, trace, x, y, step=step, hs=hs, 
+                      maxdis=maxdis, background=background,
+                      direction=-1)
     trace.reverse()
-    internal_tracing(arr, trace, x, y, step=step, hs=hs, 
+    _internal_tracing(arr, trace, x, y, step=step, hs=hs, 
                      maxdis=maxdis, background=background,
                      direction=+1)
 
@@ -191,3 +200,4 @@ def tracing(FType[:, :] arr, double x, double y, size_t step=1, size_t hs=1, dou
         result[i,1] = trace.ytrace[i]
     
     return result
+
