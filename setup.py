@@ -6,12 +6,20 @@ from setuptools import find_packages
 
 import sys
 
+try:
+    import numpy
+except ImportError:
+    sys.exit('numpy is required to install pytrace')
+
+numpy_include = numpy.get_include()
+
 # try to handle gracefully Cython
 try:
     from Cython.Distutils import build_ext
     ext1 = Extension('trace._traces',
                      ['trace/traces.pyx',
                       'trace/Trace.cpp'],
+                     include_dirs=[numpy_include],
                      language='c++')
     cmdclass = {'build_ext': build_ext}
 except ImportError:
@@ -19,6 +27,7 @@ except ImportError:
     ext1 = Extension('trace._traces',
                      ['trace/traces.cpp',
                       'trace/Trace.cpp'],
+                     include_dirs=[numpy_include],
                      language='c++')
     cmdclass = {}
 
